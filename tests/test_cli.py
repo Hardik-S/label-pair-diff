@@ -1,3 +1,4 @@
+import sysconfig
 import json
 from pathlib import Path
 import os
@@ -98,7 +99,7 @@ def test_malformed_direct_parser_error_is_generic(tmp_path):
     ("invalid-left.jsonl", "invalid-right.jsonl", 2, "invalid_input"),
 ])
 def test_installed_console_command(left_name, right_name, exit_code, status):
-    command = Path(sys.executable).with_name(
+    command = Path(sysconfig.get_path("scripts")) / (
         "label-pair-diff.exe" if os.name == "nt" else "label-pair-diff"
     )
     assert command.is_file()
