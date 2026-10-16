@@ -114,3 +114,48 @@ def test_installed_console_command(left_name, right_name, exit_code, status):
     assert payload["status"] == status
     if status == "invalid_input":
         assert result.stdout == '{"status":"invalid_input"}\n'
+
+
+@pytest.mark.parametrize("bad_side", ["left", "right", "both"])
+def test_both_inputs_attempted_before_invalid_output(monkeypatch, capsys, tmp_path, bad_side):
+    from label_pair_diff import cli
+    left = write(tmp_path, "PRIVATE_LEFT", "{bad" if bad_side in ("left", "both") else '{"id":"x","label":"y"}')
+    right = write(tmp_path, "PRIVATE_RIGHT", "{bad" if bad_side in ("right", "both") else '{"id":"x","label":"y"}')
+    calls = []
+    real_read = cli.read_rows
+    def tracked_read(path):
+        assert capsys.readouterr().out == ""
+        calls.append(path)
+        return real_read(path)
+    monkeypatch.setattr(cli, "read_rows", tracked_read)
+    monkeypatch.setattr(sys, "argv", ["label-pair-diff", str(left), str(right)])
+    assert cli.main() == 2
+    assert calls == [str(left), str(right)]
+    captured = capsys.readouterr()
+    assert captured.out == '{"status":"invalid_input"}\n'
+    assert captured.err == ""
+
+
+@pytest.mark.parametrize("kind", ["missing_both", "missing_right", "extra", "unknown", "unknown_value"])
+def test_installed_invalid_arguments_are_quiet(tmp_path, kind):
+    left = write(tmp_path, "PRIVATE_LEFT", '{"id":"PRIVATE_ID","label":"PRIVATE_LABEL"}')
+    right = write(tmp_path, "PRIVATE_RIGHT", '{"id":"PRIVATE_ID","label":"PRIVATE_LABEL"}')
+    args = {"missing_both": [], "missing_right": [str(left)],
+            "extra": [str(left), str(right), "PRIVATE_EXTRA"],
+            "unknown": [str(left), str(right), "--PRIVATE_OPTION"],
+            "unknown_value": [str(left), str(right), "--PRIVATE_OPTION=PRIVATE_VALUE"]}[kind]
+    command = Path(sysconfig.get_path("scripts")) / ("label-pair-diff.exe" if os.name == "nt" else "label-pair-diff")
+    result = subprocess.run([str(command), *args], text=True, capture_output=True)
+    assert result.returncode == 2
+    assert result.stdout == '{"status":"invalid_input"}\n'
+    assert result.stderr == ""
+    assert "PRIVATE" not in result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("flag", ["-h", "--help"])
+def test_installed_help_success(flag):
+    command = Path(sysconfig.get_path("scripts")) / ("label-pair-diff.exe" if os.name == "nt" else "label-pair-diff")
+    result = subprocess.run([str(command), flag], text=True, capture_output=True)
+    assert result.returncode == 0
+    assert "usage:" in result.stdout
+    assert result.stderr == ""
